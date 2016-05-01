@@ -1,3 +1,4 @@
+#!/usr/bin/swift
 //
 //  main.swift
 //  DayOneToMarkdownFiles
@@ -37,8 +38,8 @@ struct Location {
     
     init?(dictionary: [String:AnyObject]) {
         guard let localityName = dictionary["localityName"] as? String,
-        let placeName = dictionary["placeName"] as?String else  {
-            return nil
+            let placeName = dictionary["placeName"] as?String else  {
+                return nil
         }
         
         self.localityName = localityName
@@ -59,13 +60,13 @@ struct Photo {
     
     init?(dictionary: [String:AnyObject]) {
         guard let identifier = dictionary["identifier"] as? String,
-        let md5 = dictionary["md5"] as? String else  {
-            return nil
+            let md5 = dictionary["md5"] as? String else  {
+                return nil
         }
         
         self.identifier = identifier
         self.md5 = md5
-
+        
     }
     
     static func photosFromArray(array: [[String:AnyObject]]) -> [Photo] {
@@ -85,8 +86,8 @@ struct Entry {
     
     init?(dictionary: [String:AnyObject]) {
         guard let text = dictionary["text"] as?String,
-        let creationDateString = dictionary["creationDate"] as? String,
-        let creationDate = dateFormatter.dateFromString(creationDateString) else {
+            let creationDateString = dictionary["creationDate"] as? String,
+            let creationDate = dateFormatter.dateFromString(creationDateString) else {
                 return nil
         }
         
@@ -120,27 +121,27 @@ struct Entry {
     }
 }
 
-func arrayFromContentsOfFileWithName() -> [Entry] {
-    let location = NSString(string:"~/Dropbox/Day One Export/Journal.json").stringByExpandingTildeInPath
-    let data = NSData(contentsOfFile: location)
+func arrayFromContentsOfFileAtPath(path: String) -> [Entry] {
+    let data = NSData(contentsOfFile: path)
     let dict = try! NSJSONSerialization.JSONObjectWithData(data!, options: .AllowFragments) as? NSDictionary
     let entries = dict?["entries"] as? [[String:AnyObject]]
     return Entry.entriesFromArray(entries!)
     
 }
 
-func renamePhoto(photo: Photo, withCreationDate date: NSDate) {
+func renamePhoto(photo: Photo, atPath path: NSString, withCreationDate date: NSDate) {
     dateFormatter.dateFormat = fileNameDateFormat
-    var fileName = dateFormatter.stringFromDate(date)
-    let fileAlreadyExists = NSFileManager.defaultManager().fileExistsAtPath(NSString(string:"~/Dropbox/Day One Export/Photos/"+fileName + ".jpeg").stringByExpandingTildeInPath)
+    var filename = dateFormatter.stringFromDate(date)
+    let photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
+    let fileAlreadyExists = NSFileManager.defaultManager().fileExistsAtPath(photoPath)
     if fileAlreadyExists {
-        fileName = fileNameForDuplication(fileName)
+        filename = fileNameForDuplication(filename)
     }
     
-    let originalPath = NSString(string:"~/Dropbox/Day One Export/Photos/"+photo.md5+".jpeg").stringByExpandingTildeInPath
-    let newPath = NSString(string:"~/Dropbox/Day One Export/Photos/"+fileName+".jpeg").stringByExpandingTildeInPath
+    let originalPath = path.stringByAppendingPathComponent("photos/" + photo.md5 + ".jpeg")
+    let newPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
     
-    try? NSFileManager.defaultManager().moveItemAtPath(originalPath, toPath: newPath)
+    _ = try? NSFileManager.defaultManager().moveItemAtPath(originalPath, toPath: newPath)
     
 }
 
@@ -193,27 +194,38 @@ func markdownStringForEntry(entry: Entry) -> String {
     return string
 }
 
-func saveMarkdownFileForEntry(entry: Entry) {
+func saveMarkdownFileForEntry(entry: Entry, atPath path: NSString) {
     dateFormatter.dateFormat = fileNameDateFormat
     let filename = dateFormatter.stringFromDate(entry.creationDate)
     let markdownString = markdownStringForEntry(entry)
     let markdownData = markdownString.dataUsingEncoding(NSUTF8StringEncoding)
-    var path = NSString(string:"~/Dropbox/Day One Export/"+filename+".md").stringByExpandingTildeInPath
-    if NSFileManager.defaultManager().fileExistsAtPath(path) {
-        path = NSString(string:"~/Dropbox/Day One Export/"+fileNameForDuplication(filename)+".md").stringByExpandingTildeInPath
-        
+    var filePath = path.stringByAppendingPathComponent(filename + ".md")
+    if NSFileManager.defaultManager().fileExistsAtPath(filePath) {
+        filePath = path.stringByAppendingPathComponent(fileNameForDuplication(filename) + ".md")
     }
     
-    NSFileManager.defaultManager().createFileAtPath(path, contents: markdownData, attributes: nil)
+    NSFileManager.defaultManager().createFileAtPath(filePath, contents: markdownData, attributes: nil)
     
 }
 
-for entry in arrayFromContentsOfFileWithName() {
+let dayOneExportFolderPath = Process.arguments[1] as NSString
+
+let jsonPath = dayOneExportFolderPath.stringByAppendingPathComponent("Journal.json")
+if !NSFileManager.defaultManager().fileExistsAtPath(jsonPath) {
+    print("No Journal.json file contained in folder")
+    exit(EXIT_FAILURE)
+}
+
+let entriesArray = arrayFromContentsOfFileAtPath(jsonPath)
+print("Converting \(entriesArray.count) entries")
+for entry in entriesArray {
     if let photos = entry.photos {
         for photo in photos {
-            renamePhoto(photo, withCreationDate: entry.creationDate)
+            renamePhoto(photo, atPath:dayOneExportFolderPath, withCreationDate: entry.creationDate)
         }
     }
-    saveMarkdownFileForEntry(entry)
+    saveMarkdownFileForEntry(entry, atPath: dayOneExportFolderPath)
     
 }
+print("Done")
+exit(EXIT_SUCCESS)
