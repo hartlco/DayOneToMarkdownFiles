@@ -160,7 +160,7 @@ func fileNameForDuplication(filename: String) ->String {
 
 func markdownStringForEntry(entry: Entry) -> String {
     
-    let imagePattern = "!\\[]\\(.*\\)\\n\\n"
+    let imagePattern = "\\n?!\\[]\\(.*\\)\\n?\\n?"
     
     let regex = try! NSRegularExpression(pattern: imagePattern, options: .CaseInsensitive)
     let newString = regex.stringByReplacingMatchesInString(entry.text, options: NSMatchingOptions.ReportProgress, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
