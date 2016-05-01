@@ -132,10 +132,10 @@ func arrayFromContentsOfFileAtPath(path: String) -> [Entry] {
 func renamePhoto(photo: Photo, atPath path: NSString, withCreationDate date: NSDate) {
     dateFormatter.dateFormat = fileNameDateFormat
     var filename = dateFormatter.stringFromDate(date)
-    let photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
-    let fileAlreadyExists = NSFileManager.defaultManager().fileExistsAtPath(photoPath)
-    if fileAlreadyExists {
+    var photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
+    while NSFileManager.defaultManager().fileExistsAtPath(photoPath) {
         filename = fileNameForDuplication(filename)
+		photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
     }
     
     let originalPath = path.stringByAppendingPathComponent("photos/" + photo.md5 + ".jpeg")
@@ -150,7 +150,7 @@ func fileNameForDuplication(filename: String) ->String {
     if splittedName.count > 1 {
         let lastDigit = Int(splittedName[1])
         if let lastDigit = lastDigit {
-            return "\(splittedName.first!)_\(lastDigit)"
+            return "\(splittedName.first!)_\(lastDigit+1)"
         }
         
     }
@@ -163,7 +163,7 @@ func markdownStringForEntry(entry: Entry) -> String {
     let imagePattern = "!\\[]\\(.*\\)\\n\\n"
     
     let regex = try! NSRegularExpression(pattern: imagePattern, options: .CaseInsensitive)
-    let newString = regex.stringByReplacingMatchesInString(entry.text, options: NSMatchingOptions.WithoutAnchoringBounds, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
+    let newString = regex.stringByReplacingMatchesInString(entry.text, options: NSMatchingOptions.ReportProgress, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
     
     dateFormatter.dateFormat = headerDateFormat
     var string = "#\(dateFormatter.stringFromDate(entry.creationDate))\n\n"
@@ -196,14 +196,15 @@ func markdownStringForEntry(entry: Entry) -> String {
 
 func saveMarkdownFileForEntry(entry: Entry, atPath path: NSString) {
     dateFormatter.dateFormat = fileNameDateFormat
-    let filename = dateFormatter.stringFromDate(entry.creationDate)
+    var filename = dateFormatter.stringFromDate(entry.creationDate)
     let markdownString = markdownStringForEntry(entry)
     let markdownData = markdownString.dataUsingEncoding(NSUTF8StringEncoding)
     var filePath = path.stringByAppendingPathComponent(filename + ".md")
-    if NSFileManager.defaultManager().fileExistsAtPath(filePath) {
-        filePath = path.stringByAppendingPathComponent(fileNameForDuplication(filename) + ".md")
-    }
-    
+	while NSFileManager.defaultManager().fileExistsAtPath(filePath) {
+		filename = fileNameForDuplication(filename)
+		filePath = path.stringByAppendingPathComponent(filename + ".md")
+	}
+    filePath = path.stringByAppendingPathComponent(filename + ".md")
     NSFileManager.defaultManager().createFileAtPath(filePath, contents: markdownData, attributes: nil)
     
 }
