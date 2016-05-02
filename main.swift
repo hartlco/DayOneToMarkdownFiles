@@ -46,12 +46,6 @@ struct Location {
         self.placeName = placeName
         
     }
-    
-    static func locatioFromArray(array: [[String:AnyObject]]) -> [Photo] {
-        return array.flatMap {
-            return Photo(dictionary: $0)
-        }
-    }
 }
 
 struct Photo {
