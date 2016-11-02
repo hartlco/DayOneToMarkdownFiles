@@ -13,7 +13,7 @@ let jsonDateFormat = "yyyy-MM-dd'T'HH:mm:ssz"
 let fileNameDateFormat = "yyyy-MM-dd"
 let headerDateFormat = "yyyy-MM-dd EEEE"
 
-let dateFormatter = NSDateFormatter()
+let dateFormatter = DateFormatter()
 dateFormatter.dateFormat = jsonDateFormat
 
 struct Weather {
@@ -63,7 +63,7 @@ struct Photo {
         
     }
     
-    static func photosFromArray(array: [[String:AnyObject]]) -> [Photo] {
+    static func photosFromArray(_ array: [[String:AnyObject]]) -> [Photo] {
         return array.flatMap {
             return Photo(dictionary: $0)
         }
@@ -76,12 +76,12 @@ struct Entry {
     let text: String
     let location: Location?
     let weather: Weather?
-    let creationDate: NSDate
+    let creationDate: Date
     
     init?(dictionary: [String:AnyObject]) {
         guard let text = dictionary["text"] as?String,
             let creationDateString = dictionary["creationDate"] as? String,
-            let creationDate = dateFormatter.dateFromString(creationDateString) else {
+            let creationDate = dateFormatter.date(from: creationDateString) else {
                 return nil
         }
         
@@ -108,38 +108,38 @@ struct Entry {
         
     }
     
-    static func entriesFromArray(array: [[String:AnyObject]]) -> [Entry] {
+    static func entriesFromArray(_ array: [[String:AnyObject]]) -> [Entry] {
         return array.flatMap {
             return Entry(dictionary: $0)
         }
     }
 }
 
-func arrayFromContentsOfFileAtPath(path: String) -> [Entry] {
-    let data = NSData(contentsOfFile: path)
-    let dict = try! NSJSONSerialization.JSONObjectWithData(data!, options: .AllowFragments) as? NSDictionary
+func arrayFromContentsOfFileAtPath(_ path: String) -> [Entry] {
+    let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+    let dict = try! JSONSerialization.jsonObject(with: data!, options: .allowFragments) as? NSDictionary
     let entries = dict?["entries"] as? [[String:AnyObject]]
     return Entry.entriesFromArray(entries!)
     
 }
 
-func renamePhoto(photo: Photo, atPath path: NSString, withCreationDate date: NSDate) {
+func renamePhoto(_ photo: Photo, atPath path: NSString, withCreationDate date: Date) {
     dateFormatter.dateFormat = fileNameDateFormat
-    var filename = dateFormatter.stringFromDate(date)
-    var photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
-    while NSFileManager.defaultManager().fileExistsAtPath(photoPath) {
+    var filename = dateFormatter.string(from: date)
+    var photoPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
+    while FileManager.default.fileExists(atPath: photoPath) {
         filename = fileNameForDuplication(filename)
-		photoPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
+        photoPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
     }
     
-    let originalPath = path.stringByAppendingPathComponent("photos/" + photo.md5 + ".jpeg")
-    let newPath = path.stringByAppendingPathComponent("photos/" + filename + ".jpeg")
+    let originalPath = path.appendingPathComponent("photos/" + photo.md5 + ".jpeg")
+    let newPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
     
-    _ = try? NSFileManager.defaultManager().moveItemAtPath(originalPath, toPath: newPath)
+    _ = try? FileManager.default.moveItem(atPath: originalPath, toPath: newPath)
     
 }
 
-func fileNameForDuplication(filename: String) ->String {
+func fileNameForDuplication(_ filename: String) ->String {
     let splittedName = filename.characters.split{$0 == "_"}.map(String.init)
     if splittedName.count > 1 {
         let lastDigit = Int(splittedName[1])
@@ -152,15 +152,15 @@ func fileNameForDuplication(filename: String) ->String {
     return filename + "_1"
 }
 
-func markdownStringForEntry(entry: Entry) -> String {
+func markdownStringForEntry(_ entry: Entry) -> String {
     
     let imagePattern = "\\n?!\\[]\\(.*\\)\\n?\\n?"
     
-    let regex = try! NSRegularExpression(pattern: imagePattern, options: .CaseInsensitive)
-    let newString = regex.stringByReplacingMatchesInString(entry.text, options: NSMatchingOptions.ReportProgress, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
+    let regex = try! NSRegularExpression(pattern: imagePattern, options: .caseInsensitive)
+    let newString = regex.stringByReplacingMatches(in: entry.text, options: NSRegularExpression.MatchingOptions.reportProgress, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
     
     dateFormatter.dateFormat = headerDateFormat
-    var string = "#\(dateFormatter.stringFromDate(entry.creationDate))\n\n"
+    var string = "#\(dateFormatter.string(from: entry.creationDate))\n\n"
     if let location = entry.location {
         string = string + "\t\(location.placeName), \(location.localityName)\n"
     }
@@ -178,9 +178,9 @@ func markdownStringForEntry(entry: Entry) -> String {
         for i in (0..<photos.count) {
             string = string + "\n"
             if i == 0 {
-                string = string + "![](photos/\(dateFormatter.stringFromDate(entry.creationDate)).jpeg)\n"
+                string = string + "![](photos/\(dateFormatter.string(from: entry.creationDate)).jpeg)\n"
             } else {
-                string = string + "![](photos/\(fileNameForDuplication((dateFormatter.stringFromDate(entry.creationDate)))).jpeg)\n"
+                string = string + "![](photos/\(fileNameForDuplication((dateFormatter.string(from: entry.creationDate)))).jpeg)\n"
             }
         }
     }
@@ -188,25 +188,25 @@ func markdownStringForEntry(entry: Entry) -> String {
     return string
 }
 
-func saveMarkdownFileForEntry(entry: Entry, atPath path: NSString) {
+func saveMarkdownFileForEntry(_ entry: Entry, atPath path: NSString) {
     dateFormatter.dateFormat = fileNameDateFormat
-    var filename = dateFormatter.stringFromDate(entry.creationDate)
+    var filename = dateFormatter.string(from: entry.creationDate)
     let markdownString = markdownStringForEntry(entry)
-    let markdownData = markdownString.dataUsingEncoding(NSUTF8StringEncoding)
-    var filePath = path.stringByAppendingPathComponent(filename + ".md")
-	while NSFileManager.defaultManager().fileExistsAtPath(filePath) {
-		filename = fileNameForDuplication(filename)
-		filePath = path.stringByAppendingPathComponent(filename + ".md")
-	}
-    filePath = path.stringByAppendingPathComponent(filename + ".md")
-    NSFileManager.defaultManager().createFileAtPath(filePath, contents: markdownData, attributes: nil)
+    let markdownData = markdownString.data(using: String.Encoding.utf8)
+    var filePath = path.appendingPathComponent(filename + ".md")
+    while FileManager.default.fileExists(atPath: filePath) {
+        filename = fileNameForDuplication(filename)
+        filePath = path.appendingPathComponent(filename + ".md")
+    }
+    filePath = path.appendingPathComponent(filename + ".md")
+    FileManager.default.createFile(atPath: filePath, contents: markdownData, attributes: nil)
     
 }
 
-let dayOneExportFolderPath = Process.arguments[1] as NSString
+let dayOneExportFolderPath = CommandLine.arguments[1] as NSString
 
-let jsonPath = dayOneExportFolderPath.stringByAppendingPathComponent("Journal.json")
-if !NSFileManager.defaultManager().fileExistsAtPath(jsonPath) {
+let jsonPath = dayOneExportFolderPath.appendingPathComponent("Journal.json")
+if !FileManager.default.fileExists(atPath: jsonPath) {
     print("No Journal.json file contained in folder")
     exit(EXIT_FAILURE)
 }
@@ -224,3 +224,4 @@ for entry in entriesArray {
 }
 print("Done")
 exit(EXIT_SUCCESS)
+
