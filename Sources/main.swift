@@ -35,16 +35,21 @@ struct Weather {
 struct Location {
     let localityName: String
     let placeName: String
+    let longitude: Double
+    let latitude: Double
 
     init?(dictionary: [String:AnyObject]) {
         guard let localityName = dictionary["localityName"] as? String,
-            let placeName = dictionary["placeName"] as?String else  {
+            let placeName = dictionary["placeName"] as? String,
+            let longitude = dictionary["longitude"] as? Double,
+            let latitude = dictionary["latitude"] as? Double else  {
                 return nil
         }
 
         self.localityName = localityName
         self.placeName = placeName
-
+        self.longitude = longitude
+        self.latitude = latitude
     }
 }
 
@@ -71,7 +76,6 @@ struct Photo {
 }
 
 struct Entry {
-
     let photos: [Photo]?
     let text: String
     let location: Location?
@@ -162,7 +166,7 @@ func markdownStringForEntry(entry: Entry) -> String {
     dateFormatter.dateFormat = headerDateFormat
     var string = "#\(dateFormatter.string(from: entry.creationDate))\n\n"
     if let location = entry.location {
-        string = string + "\t\(location.placeName), \(location.localityName)\n"
+        string = string + "\t\(location.placeName), \(location.localityName), \(location.latitude) - \(location.longitude)\n"
     }
 
     if let weather = entry.weather {
