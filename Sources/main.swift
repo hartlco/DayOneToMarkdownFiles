@@ -1,8 +1,5 @@
 #!/usr/bin/swift
 //
-//  main.swift
-//  DayOneToMarkdownFiles
-//
 //  Created by hartlco on 29/04/16.
 //  Copyright © 2016 Martin Hartl. All rights reserved.
 //
@@ -12,9 +9,14 @@ import Foundation
 let jsonDateFormat = "yyyy-MM-dd'T'HH:mm:ssz"
 let fileNameDateFormat = "yyyy-MM-dd"
 let headerDateFormat = "yyyy-MM-dd EEEE"
+let postFileFormat = "dd.MM.yyyy"
+
+let siteURL = "{{ site.url }}"
 
 let dateFormatter = DateFormatter()
 dateFormatter.dateFormat = jsonDateFormat
+
+let fileManager = FileManager.default
 
 struct Weather {
     let conditionsDescription: String
@@ -127,20 +129,23 @@ func arrayFromContentsOfFileAtPath(url: URL) -> [Entry] {
 
 }
 
-func renamePhoto(photo: Photo, atPath path: NSString, withCreationDate date: Date) {
+func renamePhoto(photo: Photo, atPath path: NSString, folderName: String,  withCreationDate date: Date) {
     dateFormatter.dateFormat = fileNameDateFormat
     var filename = dateFormatter.string(from: date)
-    var photoPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
-    while FileManager.default.fileExists(atPath: photoPath) {
+    var photoPath = path.appendingPathComponent(folderName + "/assets/" + filename + ".jpeg")
+    while fileManager.fileExists(atPath: photoPath) {
         filename = fileNameForDuplication(filename: filename)
-        photoPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
+        photoPath = path.appendingPathComponent(folderName + "/assets/" + filename + ".jpeg")
     }
 
     let originalPath = path.appendingPathComponent("photos/" + photo.md5 + ".jpeg")
-    let newPath = path.appendingPathComponent("photos/" + filename + ".jpeg")
+    let newPath = photoPath
 
-    _ = try? FileManager.default.moveItem(atPath: originalPath, toPath: newPath)
-
+    do {
+        try fileManager.moveItem(atPath: originalPath, toPath: newPath)
+    } catch {
+        print("Couldtn move photo to path" + newPath)
+    }
 }
 
 func fileNameForDuplication(filename: String) ->String {
@@ -157,34 +162,27 @@ func fileNameForDuplication(filename: String) ->String {
 }
 
 func markdownStringForEntry(entry: Entry) -> String {
-
     let imagePattern = "\\n?!\\[]\\(.*\\)\\n?\\n?"
 
     let regex = try! NSRegularExpression(pattern: imagePattern, options: .caseInsensitive)
     let newString = regex.stringByReplacingMatches(in: entry.text, options: NSRegularExpression.MatchingOptions.reportProgress, range: NSMakeRange(0, entry.text.characters.count), withTemplate: "")
 
-    dateFormatter.dateFormat = headerDateFormat
-    var string = "#\(dateFormatter.string(from: entry.creationDate))\n\n"
+    dateFormatter.dateFormat = postFileFormat
+    var string = "# Datum: \(dateFormatter.string(from: entry.creationDate)) "
     if let location = entry.location {
-        string = string + "\t\(location.placeName), \(location.localityName), \(location.latitude) - \(location.longitude)\n"
+        string = string + "Ort: \(location.localityName)"
     }
 
-    if let weather = entry.weather {
-        string = string + "\t\(weather.conditionsDescription), \(weather.temperatureCelsius)°C\n"
-    }
-
-    string = string + "\n"
-
-    string = string + newString + "\n"
+    string = string + "\n" + newString + "\n"
 
     if let photos = entry.photos {
         dateFormatter.dateFormat = fileNameDateFormat
         for i in (0..<photos.count) {
             string = string + "\n"
             if i == 0 {
-                string = string + "![](photos/\(dateFormatter.string(from: entry.creationDate)).jpeg)\n"
+                string = string + "![](assets/\(dateFormatter.string(from: entry.creationDate)).jpeg)\n"
             } else {
-                string = string + "![](photos/\(fileNameForDuplication(filename: (dateFormatter.string(from: entry.creationDate)))).jpeg)\n"
+                string = string + "![](assets/\(fileNameForDuplication(filename: (dateFormatter.string(from: entry.creationDate)))).jpeg)\n"
             }
         }
     }
@@ -192,39 +190,66 @@ func markdownStringForEntry(entry: Entry) -> String {
     return string
 }
 
-func saveMarkdownFileForEntry(entry: Entry, atPath path: NSString) {
+func saveMarkdownFileForEntry(entry: Entry, atPath path: URL) -> String {
     dateFormatter.dateFormat = fileNameDateFormat
-    var filename = dateFormatter.string(from: entry.creationDate)
+    var foldername = dateFormatter.string(from: entry.creationDate)
+
+    do {
+        try fileManager.createDirectory(atPath: path.path + "/" + foldername + ".textbundle", withIntermediateDirectories: true)
+        try fileManager.createDirectory(atPath: path.path + "/" + foldername + ".textbundle/assets", withIntermediateDirectories: false)
+    } catch {
+        do {
+            foldername = fileNameForDuplication(filename: foldername)
+            try fileManager.createDirectory(atPath: path.path + "/" + foldername + ".textbundle", withIntermediateDirectories: true)
+            try fileManager.createDirectory(atPath: path.path + "/" + foldername + ".textbundle/assets", withIntermediateDirectories: false)
+            print("Created folder because of duplication: " + foldername)
+        } catch {
+            print("Couldnt create folder name: " + foldername)
+        }
+    }
+
     let markdownString = markdownStringForEntry(entry: entry)
     let markdownData = markdownString.data(using: .utf8)
-    var filePath = path.appendingPathComponent(filename + ".md")
-    while FileManager.default.fileExists(atPath: filePath) {
-        filename = fileNameForDuplication(filename: filename)
-        filePath = path.appendingPathComponent(filename + ".md")
-    }
-    filePath = path.appendingPathComponent(filename + ".md")
-    FileManager.default.createFile(atPath: filePath, contents: markdownData, attributes: nil)
+    let fileURL = path.appendingPathComponent(foldername + ".textbundle/" + "text.markdown")
+    fileManager.createFile(atPath: fileURL.path, contents: markdownData, attributes: nil)
 
+    return foldername
 }
 
-let dayOneExportFolderPath = CommandLine.arguments[1] as NSString
+func saveTextbundlePlist(at path: URL, inFolder folder: String) {
+    let info = [
+        "creatorURL" : "file:///Applications/DayOneToMarkdown.app/",
+        "transient" : false,
+        "type" : "net.daringfireball.markdown",
+        "creatorIdentifier" : "com.ulyssesapp.mac",
+        "version" : 2
+        ] as [String : Any]
 
-let jsonPath = dayOneExportFolderPath.appendingPathComponent("Journal.json")
-if !FileManager.default.fileExists(atPath: jsonPath) {
+    let data = try! JSONSerialization.data(withJSONObject: info, options: .prettyPrinted)
+    let fileURL = path.appendingPathComponent(folder + ".textbundle/" + "info.json")
+    fileManager.createFile(atPath: fileURL.path, contents: data, attributes: nil)
+}
+
+let dayOneExportFolderPath = URL(fileURLWithPath: CommandLine.arguments[1])
+
+let jsonURL = dayOneExportFolderPath.appendingPathComponent("Journal.json", isDirectory: false)
+if !fileManager.fileExists(atPath: jsonURL.path) {
     print("No Journal.json file contained in folder")
     exit(EXIT_FAILURE)
 }
 
-let entriesArray = arrayFromContentsOfFileAtPath(url: URL(fileURLWithPath: jsonPath))
+let entriesArray = arrayFromContentsOfFileAtPath(url: jsonURL)
 print("Converting \(entriesArray.count) entries")
 for entry in entriesArray {
+    let folderName = saveMarkdownFileForEntry(entry: entry, atPath: dayOneExportFolderPath)
+    saveTextbundlePlist(at: dayOneExportFolderPath, inFolder: folderName)
+
     if let photos = entry.photos {
         for photo in photos {
-            renamePhoto(photo: photo, atPath:dayOneExportFolderPath, withCreationDate: entry.creationDate)
+            renamePhoto(photo: photo, atPath:dayOneExportFolderPath.path as NSString, folderName: folderName + ".textbundle", withCreationDate: entry.creationDate)
         }
     }
-    saveMarkdownFileForEntry(entry: entry, atPath: dayOneExportFolderPath)
-
 }
+
 print("Done")
 exit(EXIT_SUCCESS)
